@@ -23,7 +23,7 @@ function RelayButton({
       className={`rounded-xl px-4 py-3 text-sm font-semibold transition ${
         isOn
           ? "bg-emerald-500 text-emerald-950 hover:bg-emerald-400"
-          : "bg-slate-700 text-slate-100 hover:bg-slate-600"
+          : "bg-slate-200 text-slate-800 hover:bg-slate-300 dark:bg-slate-700 dark:text-slate-100 dark:hover:bg-slate-600"
       }`}
     >
       {label}: {isOn ? "ON" : "OFF"}
@@ -35,9 +35,9 @@ export default function RelayControl({ relays, onToggleRelay, onToggleAll }: Rel
   const allOn = Object.values(relays).every(Boolean);
 
   return (
-    <div className="rounded-2xl bg-panel p-5 shadow-glow">
+    <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm dark:border-white/10 dark:bg-white/5 dark:shadow-glow dark:backdrop-blur">
       <div className="mb-4 flex items-center justify-between">
-        <h3 className="text-lg font-semibold text-white">Kontrol Relay</h3>
+        <h3 className="text-lg font-semibold text-slate-900 dark:text-white">Kontrol Relay</h3>
         <button
           onClick={() => onToggleAll(!allOn)}
           className={`rounded-xl px-4 py-2 text-sm font-semibold transition ${

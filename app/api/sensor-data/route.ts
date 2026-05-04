@@ -39,17 +39,41 @@ export async function POST(request: Request) {
   }
 }
 
-export async function GET() {
+export async function GET(request: Request) {
   try {
+    const { searchParams } = new URL(request.url);
+    const format = searchParams.get("format");
+    const limitParam = searchParams.get("limit");
+    const parsedLimit = limitParam ? Number(limitParam) : 10;
+    const limit = Number.isFinite(parsedLimit) && parsedLimit > 0 ? Math.min(parsedLimit, 5000) : 10;
+
     const { data, error } = await supabase
       .from("sensor_data")
       .select("id, suhu, kelembaban, ldr, created_at")
       .order("created_at", { ascending: false })
-      .limit(10);
+      .limit(limit);
 
     if (error) {
       console.error("Failed to fetch sensor history:", error.message);
       return NextResponse.json({ error: error.message }, { status: 500 });
+    }
+
+    if (format === "csv") {
+      const rows = data ?? [];
+      const csvHeader = "id,suhu,kelembaban,ldr,created_at\n";
+      const csvBody = rows
+        .map((row) => {
+          const safeLdr = String(row.ldr).replace(/"/g, "\"\"");
+          return `${row.id},${row.suhu},${row.kelembaban},"${safeLdr}",${row.created_at}`;
+        })
+        .join("\n");
+
+      return new Response(csvHeader + csvBody, {
+        headers: {
+          "Content-Type": "text/csv; charset=utf-8",
+          "Content-Disposition": `attachment; filename=\"sensor_data_${Date.now()}.csv\"`
+        }
+      });
     }
 
     return NextResponse.json({ data: data ?? [] });

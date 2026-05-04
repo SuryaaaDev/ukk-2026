@@ -9,6 +9,7 @@
     "lint": "next lint"
   },
   "dependencies": {
+    "lucide-react": "^0.523.0",
     "@supabase/supabase-js": "^2.49.8",
     "mqtt": "^5.10.3",
     "next": "^16.2.4",
