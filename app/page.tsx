@@ -282,7 +282,6 @@ export default function Page() {
               <div className="mt-3 space-y-2">
                 <div className="flex items-center justify-between">
                   <span className={`rounded-full px-2.5 py-1 text-[11px] font-semibold ${tempStatusBadgeClass}`}>{tempStatusLabel}</span>
-                  <span className="text-xs text-slate-500 dark:text-slate-300">20-35°C</span>
                 </div>
               </div>
             }
