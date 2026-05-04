@@ -20,6 +20,7 @@ type ChartPoint = {
 };
 
 const MAX_POINTS = 50;
+type TempTone = "normal" | "warning" | "danger";
 
 export default function Page() {
   const [theme, setTheme] = useState<"light" | "dark">("light");
@@ -153,6 +154,42 @@ export default function Page() {
     [sensor.relay1, sensor.relay2, sensor.relay3, sensor.relay4]
   );
 
+  const tempTone: TempTone = useMemo(() => {
+    if (sensor.suhu === null) return "normal";
+    if (sensor.suhu >= 30) return "danger";
+    if (sensor.suhu >= 25) return "warning";
+    return "normal";
+  }, [sensor.suhu]);
+
+  const toneStyles: Record<TempTone, { suhuColor: string; suhuCard: string; suhuAccent: string }> = {
+    normal: {
+      suhuColor: "bg-emerald-500",
+      suhuCard: "border-emerald-200/80 bg-emerald-50/80 dark:border-emerald-500/20 dark:bg-emerald-500/10",
+      suhuAccent: "from-emerald-400 via-green-400 to-teal-400"
+    },
+    warning: {
+      suhuColor: "bg-amber-500",
+      suhuCard: "border-amber-200/80 bg-amber-50/80 dark:border-amber-500/20 dark:bg-amber-500/10",
+      suhuAccent: "from-amber-400 via-yellow-400 to-orange-400"
+    },
+    danger: {
+      suhuColor: "bg-rose-500",
+      suhuCard: "border-rose-200/80 bg-rose-50/80 dark:border-rose-500/20 dark:bg-rose-500/10",
+      suhuAccent: "from-rose-500 via-red-500 to-orange-500"
+    }
+  };
+
+  const tempStatusLabel = sensor.suhu === null ? "Menunggu data" : sensor.suhu >= 30 ? "Panas" : sensor.suhu >= 25 ? "Hangat" : "Normal";
+  const tempStatusBadgeClass =
+    tempTone === "danger"
+      ? "bg-rose-100 text-rose-700 dark:bg-rose-500/20 dark:text-rose-300"
+      : tempTone === "warning"
+      ? "bg-amber-100 text-amber-700 dark:bg-amber-500/20 dark:text-amber-300"
+      : "bg-emerald-100 text-emerald-700 dark:bg-emerald-500/20 dark:text-emerald-300";
+  const tempBarClass = tempTone === "danger" ? "from-rose-500 to-red-500" : tempTone === "warning" ? "from-amber-400 to-yellow-500" : "from-emerald-400 to-green-500";
+  const tempLevel = sensor.suhu === null ? 0 : Math.max(0, Math.min(100, ((sensor.suhu - 20) / 15) * 100));
+  const ldrIsDark = sensor.ldr === "Gelap";
+
   const onToggleRelay = (relay: RelayKey, next: boolean) => {
     if (sensor.mode === "AUTO") return;
     setSensor((prev) => ({ ...prev, [relay]: next }));
@@ -199,7 +236,8 @@ export default function Page() {
   return (
     <main className="min-h-screen bg-[radial-gradient(circle_at_top_left,_#e0f2fe_0%,_#f8fafc_45%,_#f1f5f9_100%)] px-4 py-8 text-slate-900 transition-colors duration-300 dark:bg-[radial-gradient(circle_at_top_left,_#0b1220_0%,_#020617_55%,_#020617_100%)] dark:text-slate-100 md:px-8">
       <div className="mx-auto max-w-7xl space-y-6 animate-fade-in">
-        <header className="rounded-2xl border border-white/60 bg-white/75 p-6 shadow-xl backdrop-blur-xl transition-colors duration-300 dark:border-white/10 dark:bg-slate-900/70">
+        <header className="relative overflow-hidden rounded-2xl border border-white/60 bg-white/75 p-6 shadow-xl backdrop-blur-xl transition-colors duration-300 dark:border-white/10 dark:bg-slate-900/70">
+          <div className="pointer-events-none absolute inset-x-0 top-0 h-1 bg-gradient-to-r from-cyan-400/40 via-sky-400/30 to-emerald-400/30" />
           <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
             <div>
               <h1 className="text-2xl font-bold tracking-tight md:text-3xl">IoT Monitoring Dashboard</h1>
@@ -227,21 +265,49 @@ export default function Page() {
             title="Suhu"
             value={sensor.suhu !== null ? `${sensor.suhu.toFixed(1)} C` : "-"}
             icon={Thermometer}
-            color="bg-orange-500"
+            color={toneStyles[tempTone].suhuColor}
+            cardClassName={toneStyles[tempTone].suhuCard}
+            accentClassName={toneStyles[tempTone].suhuAccent}
             isLoading={sensor.suhu === null}
+            subtitle={
+              sensor.suhu === null
+                ? "Menunggu data DHT"
+                : sensor.suhu >= 30
+                ? "Status: Panas"
+                : sensor.suhu >= 25
+                ? "Status: Hangat"
+                : "Status: Normal"
+            }
+            extra={
+              <div className="mt-3 space-y-2">
+                <div className="flex items-center justify-between">
+                  <span className={`rounded-full px-2.5 py-1 text-[11px] font-semibold ${tempStatusBadgeClass}`}>{tempStatusLabel}</span>
+                  <span className="text-xs text-slate-500 dark:text-slate-300">20-35°C</span>
+                </div>
+              </div>
+            }
           />
           <SensorCard
             title="Kelembaban"
             value={sensor.kelembaban !== null ? `${sensor.kelembaban.toFixed(1)} %` : "-"}
             icon={Droplets}
             color="bg-sky-500"
+            cardClassName="border-sky-200/80 bg-sky-50/80 dark:border-sky-500/20 dark:bg-sky-500/10"
+            accentClassName="from-sky-400 via-cyan-400 to-blue-400"
             isLoading={sensor.kelembaban === null}
+            subtitle="Kondisi kelembaban udara"
           />
           <SensorCard
             title="Status LDR"
             value={sensor.ldr ?? "-"}
-            icon={sensor.ldr === "Gelap" ? Moon : Sun}
-            color={sensor.ldr === "Gelap" ? "bg-slate-700" : "bg-yellow-500"}
+            icon={ldrIsDark ? Moon : Sun}
+            color={ldrIsDark ? "bg-indigo-600" : "bg-amber-500"}
+            cardClassName={
+              ldrIsDark
+                ? "border-indigo-200/80 bg-indigo-50/80 dark:border-indigo-500/20 dark:bg-indigo-500/10"
+                : "border-amber-200/80 bg-amber-50/80 dark:border-amber-500/20 dark:bg-amber-500/10"
+            }
+            accentClassName={ldrIsDark ? "from-indigo-500 via-violet-500 to-blue-500" : "from-amber-400 via-yellow-400 to-orange-400"}
             isLoading={sensor.ldr === null}
             subtitle="Terang / Gelap"
           />
