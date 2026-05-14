@@ -20,11 +20,11 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: "Invalid payload" }, { status: 400 });
     }
 
-    const { error } = await supabase.from("sensor_data").insert({
-      suhu,
-      kelembaban,
-      ldr
-    });
+const { error } = await supabase.from("sensor_data").insert({
+  suhu,
+  kelembaban,
+  ldr
+});
 
     if (error) {
       console.error("Failed to save sensor_data:", error.message);

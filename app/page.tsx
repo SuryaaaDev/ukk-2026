@@ -1,439 +1,224 @@
 ﻿"use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
-import type { MqttClient } from "mqtt";
-import { AlertTriangle, Droplets, Moon, Sun, Thermometer } from "lucide-react";
-import HumidityChart from "@/components/HumidityChart";
-import LoadingScreen from "@/components/LoadingScreen";
-import RelayCard from "@/components/RelayCard";
-import SensorCard from "@/components/SensorCard";
-import SensorHistoryTable from "@/components/SensorHistoryTable";
-import TemperatureChart from "@/components/TemperatureChart";
-import ThemeToggle from "@/components/ThemeToggle";
-import { connectMqtt, initialSensorState, publishMode, publishRelay, RelayKey, SensorState } from "@/lib/mqtt";
-import type { SensorDataRow } from "@/lib/types";
+import { useMemo, useState } from "react";
+import { motion } from "framer-motion";
 
-type ChartPoint = {
-  time: string;
-  suhu: number | null;
-  kelembaban: number | null;
+type RelayId = "relay1" | "relay2" | "relay3" | "relay4";
+
+type RelayLayout = {
+  id: RelayId;
+  label: string;
+  x: number;
+  y: number;
 };
 
-const MAX_POINTS = 50;
-type TempTone = "normal" | "warning" | "danger";
+const center = { x: 50, y: 50 };
+
+const relayLayouts: RelayLayout[] = [
+  { id: "relay1", label: "Relay 1", x: 50, y: 16 },
+  { id: "relay2", label: "Relay 2", x: 84, y: 50 },
+  { id: "relay3", label: "Relay 3", x: 50, y: 84 },
+  { id: "relay4", label: "Relay 4", x: 16, y: 50 }
+];
+
+function ESP32Card() {
+  return (
+    <motion.div
+      initial={{ opacity: 0, scale: 0.84, y: 16 }}
+      animate={{ opacity: 1, scale: 1, y: 0 }}
+      transition={{ duration: 0.55, ease: "easeInOut" }}
+      className="relative z-30 w-[320px] rounded-2xl border border-cyan-300/25 bg-white/10 p-5 shadow-[0_20px_60px_rgba(0,0,0,0.5),0_0_32px_rgba(56,189,248,0.22)] backdrop-blur-xl"
+    >
+      <div className="absolute inset-[1px] rounded-2xl bg-gradient-to-br from-cyan-300/10 via-transparent to-blue-300/10" />
+      <div className="relative">
+        <p className="text-xs uppercase tracking-[0.22em] text-cyan-200/90">Main Controller</p>
+        <h2 className="mt-2 text-2xl font-semibold text-white">ESP32 Device</h2>
+        <p className="mt-2 text-sm text-slate-300">Realtime MQTT communication</p>
+
+        <div className="mt-4 grid grid-cols-3 gap-2">
+          {[
+            ["WiFi", "Connected"],
+            ["Mode", "Manual"],
+            ["Signal", "Stable"]
+          ].map(([k, v]) => (
+            <div key={k} className="rounded-lg border border-white/10 bg-slate-900/45 px-2 py-2 text-center">
+              <p className="text-[10px] uppercase tracking-wide text-slate-400">{k}</p>
+              <p className="mt-1 text-xs font-semibold text-cyan-200">{v}</p>
+            </div>
+          ))}
+        </div>
+
+        <motion.div
+          className="mt-4 h-1.5 w-full rounded-full bg-gradient-to-r from-cyan-400 via-blue-400 to-orange-400"
+          animate={{ opacity: [0.45, 1, 0.45] }}
+          transition={{ duration: 1.5, repeat: Infinity, ease: "easeInOut" }}
+        />
+      </div>
+    </motion.div>
+  );
+}
+
+function RelayCard({
+  relay,
+  isOn,
+  delay,
+  onToggle
+}: {
+  relay: RelayLayout;
+  isOn: boolean;
+  delay: number;
+  onToggle: () => void;
+}) {
+  return (
+    <motion.div
+      initial={{ opacity: 0, y: 10, scale: 0.92 }}
+      animate={{ opacity: 1, y: 0, scale: 1 }}
+      transition={{ duration: 0.42, delay, ease: "easeInOut" }}
+      className="absolute z-20 w-52 -translate-x-1/2 -translate-y-1/2"
+      style={{ left: `${relay.x}%`, top: `${relay.y}%` }}
+    >
+      <motion.div
+        animate={{ y: [0, -3, 0] }}
+        transition={{ duration: 2.8 + delay, repeat: Infinity, ease: "easeInOut" }}
+        className="relative rounded-xl border border-white/15 bg-white/10 p-4 shadow-[0_16px_36px_rgba(0,0,0,0.45)] backdrop-blur-xl"
+      >
+        <div className="absolute inset-[1px] rounded-xl bg-gradient-to-br from-blue-300/14 via-transparent to-cyan-300/8" />
+
+        <div className="relative flex items-center justify-between">
+          <p className="text-sm font-semibold text-white">{relay.label}</p>
+          <motion.span
+            className="h-2.5 w-2.5 rounded-full"
+            style={{
+              background: isOn ? "#22c55e" : "#64748b",
+              boxShadow: isOn ? "0 0 10px #22c55e, 0 0 20px #22c55e" : "none"
+            }}
+            animate={{ opacity: isOn ? [0.5, 1, 0.5] : 0.55 }}
+            transition={{ duration: 1.2, repeat: Infinity, ease: "easeInOut" }}
+          />
+        </div>
+
+        <p className={`relative mt-1 text-xs ${isOn ? "text-emerald-300" : "text-slate-400"}`}>Status: {isOn ? "ON" : "OFF"}</p>
+
+        <div className="relative mt-3 grid grid-cols-2 gap-2">
+          <div className="h-7 rounded-md border border-cyan-200/25 bg-slate-900/45" />
+          <div className="h-7 rounded-md border border-cyan-200/25 bg-slate-900/45" />
+        </div>
+
+        <button
+          type="button"
+          onClick={onToggle}
+          className={`relative mt-3 w-full rounded-lg px-3 py-2 text-sm font-semibold transition ${
+            isOn
+              ? "bg-gradient-to-r from-emerald-300 to-cyan-300 text-slate-900"
+              : "bg-slate-800/80 text-slate-200 hover:bg-slate-700"
+          }`}
+        >
+          {isOn ? "Turn OFF" : "Turn ON"}
+        </button>
+      </motion.div>
+    </motion.div>
+  );
+}
+
+function ConnectionLine({ to, isOn, drawDelay }: { to: { x: number; y: number }; isOn: boolean; drawDelay: number }) {
+  return (
+    <>
+      <motion.line
+        x1={center.x}
+        y1={center.y}
+        x2={to.x}
+        y2={to.y}
+        stroke="url(#lineGlowGradient)"
+        strokeWidth={isOn ? 1.8 : 1.2}
+        strokeLinecap="round"
+        strokeDasharray="8 8"
+        initial={{ pathLength: 0, opacity: 0 }}
+        animate={{
+          pathLength: 1,
+          opacity: isOn ? 1 : 0.35,
+          strokeDashoffset: isOn ? [0, -56] : [0, -18]
+        }}
+        transition={{
+          pathLength: { duration: 0.5, delay: drawDelay, ease: "easeInOut" },
+          opacity: { duration: 0.25, delay: drawDelay },
+          strokeDashoffset: { duration: isOn ? 1.25 : 2.2, repeat: Infinity, ease: "linear" }
+        }}
+        style={{ filter: isOn ? "drop-shadow(0 0 10px rgba(56,189,248,0.85))" : "drop-shadow(0 0 3px rgba(100,116,139,0.35))" }}
+      />
+
+      {isOn ? (
+        <motion.circle
+          r="0.9"
+          fill="#fb923c"
+          initial={{ opacity: 0 }}
+          animate={{ opacity: [0, 1, 1, 0], cx: [center.x, to.x], cy: [center.y, to.y] }}
+          transition={{ duration: 1.35, delay: drawDelay + 0.1, repeat: Infinity, ease: "easeInOut" }}
+          style={{ filter: "drop-shadow(0 0 8px rgba(251,146,60,0.95))" }}
+        />
+      ) : null}
+    </>
+  );
+}
 
 export default function Page() {
-  const [theme, setTheme] = useState<"light" | "dark">("light");
-  const [isReady, setIsReady] = useState(false);
-  const [isConnected, setIsConnected] = useState(false);
-  const [sensor, setSensor] = useState<SensorState>(initialSensorState);
-  const [chartData, setChartData] = useState<ChartPoint[]>([]);
-  const [historyRows, setHistoryRows] = useState<SensorDataRow[]>([]);
-  const [isHistoryLoading, setIsHistoryLoading] = useState(true);
-  const [isExporting, setIsExporting] = useState(false);
-  const [showTempWarning, setShowTempWarning] = useState(false);
-  const clientRef = useRef<MqttClient | null>(null);
-  const lastWarningAtRef = useRef(0);
+  const [relayStates, setRelayStates] = useState<Record<RelayId, boolean>>({
+    relay1: true,
+    relay2: false,
+    relay3: true,
+    relay4: false
+  });
 
-  const playWarningSound = () => {
-    try {
-      const AudioCtx = window.AudioContext || (window as typeof window & { webkitAudioContext?: typeof AudioContext }).webkitAudioContext;
-      if (!AudioCtx) return;
-      const ctx = new AudioCtx();
-      const now = ctx.currentTime;
-
-      const beep = (start: number, duration: number, freq: number) => {
-        const osc = ctx.createOscillator();
-        const gain = ctx.createGain();
-        osc.type = "square";
-        osc.frequency.value = freq;
-        gain.gain.setValueAtTime(0.0001, start);
-        gain.gain.exponentialRampToValueAtTime(0.25, start + 0.02);
-        gain.gain.exponentialRampToValueAtTime(0.0001, start + duration);
-        osc.connect(gain);
-        gain.connect(ctx.destination);
-        osc.start(start);
-        osc.stop(start + duration);
-      };
-
-      beep(now, 0.18, 880);
-      beep(now + 0.24, 0.18, 880);
-      beep(now + 0.48, 0.24, 740);
-    } catch (error) {
-      console.error("Failed playing warning sound:", error);
-    }
-  };
-
-  const fetchHistory = async (showLoading = false) => {
-    if (showLoading) setIsHistoryLoading(true);
-    try {
-      const res = await fetch("/api/sensor-data?limit=10", { cache: "no-store" });
-      if (!res.ok) throw new Error("Failed to fetch history");
-      const body = (await res.json()) as { data: SensorDataRow[] };
-      setHistoryRows(body.data ?? []);
-    } catch (error) {
-      console.error("Failed loading history:", error);
-    } finally {
-      if (showLoading) setIsHistoryLoading(false);
-    }
-  };
-
-  useEffect(() => {
-    const saved = window.localStorage.getItem("theme");
-    const initial = saved === "dark" ? "dark" : "light";
-    setTheme(initial);
-    document.documentElement.classList.toggle("dark", initial === "dark");
-
-    const timer = window.setTimeout(() => setIsReady(true), 2500);
-    return () => window.clearTimeout(timer);
-  }, []);
-
-  useEffect(() => {
-    const client = connectMqtt(setIsConnected, setSensor, () => {
-      void fetchHistory(false);
-    });
-    clientRef.current = client;
-    return () => {
-      client.end(true);
-    };
-  }, []);
-
-  useEffect(() => {
-    void fetchHistory(true);
-    const timer = window.setInterval(() => {
-      void fetchHistory(false);
-    }, 15000);
-    return () => {
-      window.clearInterval(timer);
-    };
-  }, []);
-
-  useEffect(() => {
-    if (sensor.suhu === null && sensor.kelembaban === null) return;
-
-    const point: ChartPoint = {
-      time: new Date().toLocaleTimeString("id-ID", {
-        hour: "2-digit",
-        minute: "2-digit",
-        second: "2-digit"
-      }),
-      suhu: sensor.suhu,
-      kelembaban: sensor.kelembaban
-    };
-
-    setChartData((prev) => [...prev.slice(-(MAX_POINTS - 1)), point]);
-  }, [sensor.suhu, sensor.kelembaban]);
-
-  useEffect(() => {
-    if (sensor.suhu === null || sensor.suhu < 30) return;
-    const now = Date.now();
-    const WARNING_COOLDOWN_MS = 60000;
-    if (now - lastWarningAtRef.current < WARNING_COOLDOWN_MS) return;
-    lastWarningAtRef.current = now;
-    setShowTempWarning(true);
-    playWarningSound();
-  }, [sensor.suhu]);
-
-  useEffect(() => {
-    if (!showTempWarning) return;
-    const soundTimer = window.setInterval(() => {
-      playWarningSound();
-    }, 6000);
-    return () => {
-      window.clearInterval(soundTimer);
-    };
-  }, [showTempWarning]);
-
-  const relays = useMemo(
-    () => ({
-      relay1: sensor.relay1,
-      relay2: sensor.relay2,
-      relay3: sensor.relay3,
-      relay4: sensor.relay4
-    }),
-    [sensor.relay1, sensor.relay2, sensor.relay3, sensor.relay4]
-  );
-
-  const tempTone: TempTone = useMemo(() => {
-    if (sensor.suhu === null) return "normal";
-    if (sensor.suhu >= 30) return "danger";
-    if (sensor.suhu >= 25) return "warning";
-    return "normal";
-  }, [sensor.suhu]);
-
-  const toneStyles: Record<TempTone, { suhuColor: string; suhuCard: string; suhuAccent: string }> = {
-    normal: {
-      suhuColor: "bg-emerald-500",
-      suhuCard: "border-emerald-200/80 bg-emerald-50/80 dark:border-emerald-500/20 dark:bg-emerald-500/10",
-      suhuAccent: "from-emerald-400 via-green-400 to-teal-400"
-    },
-    warning: {
-      suhuColor: "bg-amber-500",
-      suhuCard: "border-amber-200/80 bg-amber-50/80 dark:border-amber-500/20 dark:bg-amber-500/10",
-      suhuAccent: "from-amber-400 via-yellow-400 to-orange-400"
-    },
-    danger: {
-      suhuColor: "bg-rose-500",
-      suhuCard: "border-rose-200/80 bg-rose-50/80 dark:border-rose-500/20 dark:bg-rose-500/10",
-      suhuAccent: "from-rose-500 via-red-500 to-orange-500"
-    }
-  };
-
-  const tempStatusLabel = sensor.suhu === null ? "Menunggu data" : sensor.suhu >= 30 ? "Panas" : sensor.suhu >= 25 ? "Hangat" : "Normal";
-  const tempStatusBadgeClass =
-    tempTone === "danger"
-      ? "bg-rose-100 text-rose-700 dark:bg-rose-500/20 dark:text-rose-300"
-      : tempTone === "warning"
-      ? "bg-amber-100 text-amber-700 dark:bg-amber-500/20 dark:text-amber-300"
-      : "bg-emerald-100 text-emerald-700 dark:bg-emerald-500/20 dark:text-emerald-300";
-  const tempBarClass = tempTone === "danger" ? "from-rose-500 to-red-500" : tempTone === "warning" ? "from-amber-400 to-yellow-500" : "from-emerald-400 to-green-500";
-  const tempLevel = sensor.suhu === null ? 0 : Math.max(0, Math.min(100, ((sensor.suhu - 20) / 15) * 100));
-  const ldrIsDark = sensor.ldr === "Gelap";
-
-  const onToggleRelay = (relay: RelayKey, next: boolean) => {
-    if (sensor.mode === "AUTO") return;
-    setSensor((prev) => ({ ...prev, [relay]: next }));
-    publishRelay(clientRef.current, relay, next);
-  };
-
-  const onSetMode = (mode: "MANUAL" | "AUTO") => {
-    publishMode(clientRef.current, mode);
-  };
-
-  const onToggleTheme = () => {
-    const next = theme === "light" ? "dark" : "light";
-    setTheme(next);
-    window.localStorage.setItem("theme", next);
-    document.documentElement.classList.toggle("dark", next === "dark");
-  };
-
-  const onExportCsv = async () => {
-    setIsExporting(true);
-    try {
-      const res = await fetch("/api/sensor-data?format=csv&limit=5000", { cache: "no-store" });
-      if (!res.ok) throw new Error("Failed to export CSV");
-      const csvText = await res.text();
-      const blob = new Blob([csvText], { type: "text/csv;charset=utf-8;" });
-      const url = window.URL.createObjectURL(blob);
-      const link = document.createElement("a");
-      link.href = url;
-      link.download = `sensor_data_${new Date().toISOString().replace(/[:.]/g, "-")}.csv`;
-      document.body.appendChild(link);
-      link.click();
-      link.remove();
-      window.URL.revokeObjectURL(url);
-    } catch (error) {
-      console.error("Export CSV failed:", error);
-    } finally {
-      setIsExporting(false);
-    }
-  };
-
-  if (!isReady) {
-    return <LoadingScreen />;
-  }
+  const activeCount = useMemo(() => Object.values(relayStates).filter(Boolean).length, [relayStates]);
 
   return (
-    <main className="min-h-screen bg-[radial-gradient(circle_at_top_left,_#e0f2fe_0%,_#f8fafc_45%,_#f1f5f9_100%)] px-4 py-8 text-slate-900 transition-colors duration-300 dark:bg-[radial-gradient(circle_at_top_left,_#0b1220_0%,_#020617_55%,_#020617_100%)] dark:text-slate-100 md:px-8">
-      <div className="mx-auto max-w-7xl space-y-6 animate-fade-in">
-        <header className="relative overflow-hidden rounded-2xl border border-white/60 bg-white/75 p-6 shadow-xl backdrop-blur-xl transition-colors duration-300 dark:border-white/10 dark:bg-slate-900/70">
-          <div className="pointer-events-none absolute inset-x-0 top-0 h-1 bg-gradient-to-r from-cyan-400/40 via-sky-400/30 to-emerald-400/30" />
-          <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
-            <div>
-              <h1 className="text-2xl font-bold tracking-tight md:text-3xl">IoT Monitoring Dashboard</h1>
-              <p className="text-sm text-slate-500 dark:text-slate-300">Realtime Control and Monitoring via MQTT</p>
-            </div>
+    <main className="relative min-h-screen overflow-hidden bg-[radial-gradient(circle_at_20%_15%,#111f36_0%,#0a1222_45%,#060c18_100%)] text-slate-100">
+      <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_80%_80%,rgba(56,189,248,0.12),transparent_36%)]" />
+      <div className="pointer-events-none absolute inset-0 bg-[linear-gradient(rgba(255,255,255,0.025)_1px,transparent_1px),linear-gradient(90deg,rgba(255,255,255,0.025)_1px,transparent_1px)] bg-[size:46px_46px]" />
 
-            <div className="flex items-center gap-2">
-              <ThemeToggle theme={theme} onToggle={onToggleTheme} />
-              <span
-                className={`inline-flex items-center gap-2 rounded-full px-3 py-1 text-xs font-semibold ${
-                  isConnected
-                    ? "bg-emerald-100 text-emerald-700 dark:bg-emerald-500/20 dark:text-emerald-300"
-                    : "bg-rose-100 text-rose-700 dark:bg-rose-500/20 dark:text-rose-300"
-                }`}
-              >
-                <span className={`h-2 w-2 rounded-full ${isConnected ? "bg-emerald-500" : "bg-rose-500"}`} />
-                {isConnected ? "Connected" : "Disconnected"}
-              </span>
-            </div>
-          </div>
-        </header>
-
-        <section className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-          <SensorCard
-            title="Suhu"
-            value={sensor.suhu !== null ? `${sensor.suhu.toFixed(1)} C` : "-"}
-            icon={Thermometer}
-            color={toneStyles[tempTone].suhuColor}
-            cardClassName={toneStyles[tempTone].suhuCard}
-            accentClassName={toneStyles[tempTone].suhuAccent}
-            isLoading={sensor.suhu === null}
-            subtitle={
-              sensor.suhu === null
-                ? "Menunggu data DHT"
-                : sensor.suhu >= 30
-                ? "Status: Panas"
-                : sensor.suhu >= 25
-                ? "Status: Hangat"
-                : "Status: Normal"
-            }
-            extra={
-              <div className="mt-3 space-y-2">
-                <div className="flex items-center justify-between">
-                  <span className={`rounded-full px-2.5 py-1 text-[11px] font-semibold ${tempStatusBadgeClass}`}>{tempStatusLabel}</span>
-                </div>
-              </div>
-            }
-          />
-          <SensorCard
-            title="Kelembaban"
-            value={sensor.kelembaban !== null ? `${sensor.kelembaban.toFixed(1)} %` : "-"}
-            icon={Droplets}
-            color="bg-sky-500"
-            cardClassName="border-sky-200/80 bg-sky-50/80 dark:border-sky-500/20 dark:bg-sky-500/10"
-            accentClassName="from-sky-400 via-cyan-400 to-blue-400"
-            isLoading={sensor.kelembaban === null}
-            subtitle="Kondisi kelembaban udara"
-          />
-          <SensorCard
-            title="Status LDR"
-            value={sensor.ldr ?? "-"}
-            icon={ldrIsDark ? Moon : Sun}
-            color={ldrIsDark ? "bg-indigo-600" : "bg-amber-500"}
-            cardClassName={
-              ldrIsDark
-                ? "border-indigo-200/80 bg-indigo-50/80 dark:border-indigo-500/20 dark:bg-indigo-500/10"
-                : "border-amber-200/80 bg-amber-50/80 dark:border-amber-500/20 dark:bg-amber-500/10"
-            }
-            accentClassName={ldrIsDark ? "from-indigo-500 via-violet-500 to-blue-500" : "from-amber-400 via-yellow-400 to-orange-400"}
-            isLoading={sensor.ldr === null}
-            subtitle="Terang / Gelap"
-          />
-        </section>
-
-        <section className="grid gap-4 lg:grid-cols-2">
-          <TemperatureChart data={chartData} />
-          <HumidityChart data={chartData} />
-        </section>
-
-        <section>
-          <div className="mb-3 flex items-center justify-between">
-            <h2 className="text-lg font-semibold">Mode Control</h2>
-            <p className="text-xs text-slate-500 dark:text-slate-400">Manual / Auto</p>
-          </div>
-          <div className="rounded-2xl border border-white/60 bg-white/75 p-4 shadow-lg backdrop-blur-xl dark:border-white/10 dark:bg-slate-900/70">
-            <div className="flex flex-wrap items-center gap-3">
-              <div className="inline-flex rounded-xl bg-slate-100 p-1 dark:bg-slate-800/90">
-                <button
-                  onClick={() => onSetMode("MANUAL")}
-                  className={`rounded-lg px-4 py-2 text-sm font-semibold transition ${
-                    sensor.mode === "MANUAL"
-                      ? "bg-gradient-to-r from-sky-500 to-cyan-500 text-white shadow-md"
-                      : "text-slate-700 hover:bg-white dark:text-slate-200 dark:hover:bg-slate-700"
-                  }`}
-                >
-                  Manual
-                </button>
-                <button
-                  onClick={() => onSetMode("AUTO")}
-                  className={`rounded-lg px-4 py-2 text-sm font-semibold transition ${
-                    sensor.mode === "AUTO"
-                      ? "bg-gradient-to-r from-emerald-500 to-teal-500 text-white shadow-md"
-                      : "text-slate-700 hover:bg-white dark:text-slate-200 dark:hover:bg-slate-700"
-                  }`}
-                >
-                  Auto
-                </button>
-              </div>
-
-              <button
-                type="button"
-                className={`rounded-full px-3 py-1 text-xs font-semibold ${
-                  sensor.mode === "AUTO"
-                    ? "bg-emerald-100 text-emerald-700 dark:bg-emerald-500/20 dark:text-emerald-300"
-                    : sensor.mode === "MANUAL"
-                    ? "bg-sky-100 text-sky-700 dark:bg-sky-500/20 dark:text-sky-300"
-                    : "bg-slate-200 text-slate-600 dark:bg-slate-700 dark:text-slate-300"
-                }`}
-              >
-                Mode aktif: {sensor.mode ?? "Belum ada data"}
-              </button>
-            </div>
-          </div>
-        </section>
-
-        <section>
-          <div className="mb-3 flex items-center justify-between">
-            <h2 className="text-lg font-semibold">Relay Control</h2>
-            <p className="text-xs text-slate-500 dark:text-slate-400">
-              {sensor.mode === "AUTO" ? "Mode AUTO: Relay terkunci" : "Realtime ON / OFF"}
-            </p>
-          </div>
-          <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-            <RelayCard
-              label="Relay 1"
-              isOn={relays.relay1}
-              disabled={sensor.mode === "AUTO"}
-              onToggle={() => onToggleRelay("relay1", !relays.relay1)}
-            />
-            <RelayCard
-              label="Relay 2"
-              isOn={relays.relay2}
-              disabled={sensor.mode === "AUTO"}
-              onToggle={() => onToggleRelay("relay2", !relays.relay2)}
-            />
-            <RelayCard
-              label="Relay 3"
-              isOn={relays.relay3}
-              disabled={sensor.mode === "AUTO"}
-              onToggle={() => onToggleRelay("relay3", !relays.relay3)}
-            />
-            <RelayCard
-              label="Relay 4"
-              isOn={relays.relay4}
-              disabled={sensor.mode === "AUTO"}
-              onToggle={() => onToggleRelay("relay4", !relays.relay4)}
-            />
-          </div>
-        </section>
-
-        <SensorHistoryTable rows={historyRows} isLoading={isHistoryLoading} isExporting={isExporting} onExport={onExportCsv} />
-      </div>
-
-      {showTempWarning ? (
-        <div className="pointer-events-none fixed inset-x-0 top-4 z-50 flex justify-center px-4">
-          <div className="pointer-events-auto w-full max-w-2xl rounded-2xl border border-rose-300/70 bg-gradient-to-r from-rose-50/95 via-white/95 to-amber-50/95 p-4 shadow-2xl backdrop-blur animate-fade-in dark:border-rose-500/40 dark:from-slate-900/95 dark:via-slate-900/95 dark:to-rose-900/25">
-            <div className="flex items-start gap-3">
-              <div className="mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-rose-100 text-rose-600 dark:bg-rose-500/20 dark:text-rose-300">
-                <AlertTriangle className="h-5 w-5" />
-              </div>
-              <div className="min-w-0 flex-1">
-                <div className="mb-2 flex items-center gap-2">
-                  <h3 className="text-base font-bold text-rose-700 dark:text-rose-300">Peringatan Suhu Tinggi</h3>
-                  <span className="rounded-full bg-rose-100 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-rose-700 dark:bg-rose-500/20 dark:text-rose-200">
-                    Critical
-                  </span>
-                </div>
-                <p className="text-sm text-slate-700 dark:text-slate-200">
-                  Suhu mencapai <span className="font-semibold">{sensor.suhu?.toFixed(1)}°C</span>. Segera cek perangkat IoT Anda.
-                </p>
-                <div className="mt-3 h-1.5 overflow-hidden rounded-full bg-rose-100 dark:bg-rose-950/40">
-                  <div className="h-full w-full animate-pulse bg-gradient-to-r from-rose-500 via-amber-400 to-rose-500" />
-                </div>
-              </div>
-              <div className="flex gap-2">
-                <button
-                  onClick={() => setShowTempWarning(false)}
-                  className="rounded-lg bg-rose-600 px-3 py-2 text-xs font-semibold text-white transition hover:bg-rose-500"
-                >
-                  Tutup
-                </button>
-              </div>
-            </div>
-          </div>
+      <section className="relative mx-auto flex min-h-screen w-full max-w-7xl items-center justify-center px-4 py-8">
+        <div className="absolute top-8 z-30 rounded-full border border-cyan-300/20 bg-slate-900/60 px-4 py-2 text-xs tracking-[0.16em] text-cyan-200 backdrop-blur">
+          IoT Monitoring Dashboard
         </div>
-      ) : null}
+
+        <div className="relative h-[700px] w-full max-w-6xl rounded-3xl border border-white/10 bg-slate-950/45 shadow-[0_0_88px_rgba(56,189,248,0.12)] backdrop-blur-xl">
+          <svg viewBox="0 0 100 100" className="absolute inset-0 z-10 h-full w-full">
+            <defs>
+              <linearGradient id="lineGlowGradient" x1="0%" y1="0%" x2="100%" y2="100%">
+                <stop offset="0%" stopColor="#22d3ee" />
+                <stop offset="55%" stopColor="#60a5fa" />
+                <stop offset="100%" stopColor="#fb923c" />
+              </linearGradient>
+            </defs>
+
+            {relayLayouts.map((relay, idx) => (
+              <ConnectionLine key={relay.id} to={{ x: relay.x, y: relay.y }} isOn={relayStates[relay.id]} drawDelay={0.55 + idx * 0.22} />
+            ))}
+          </svg>
+
+          <div className="absolute left-1/2 top-1/2 z-20 -translate-x-1/2 -translate-y-1/2">
+            <ESP32Card />
+          </div>
+
+          {relayLayouts.map((relay, idx) => (
+            <RelayCard
+              key={relay.id}
+              relay={relay}
+              isOn={relayStates[relay.id]}
+              delay={1.4 + idx * 0.18}
+              onToggle={() => setRelayStates((prev) => ({ ...prev, [relay.id]: !prev[relay.id] }))}
+            />
+          ))}
+
+          <motion.div
+            initial={{ opacity: 0, y: 8 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.4, delay: 2, ease: "easeInOut" }}
+            className="absolute bottom-6 left-1/2 z-30 -translate-x-1/2 rounded-xl border border-white/10 bg-white/5 px-4 py-2 text-xs text-slate-300 backdrop-blur"
+          >
+            Active Relays: <span className="font-semibold text-cyan-300">{activeCount}/4</span>
+          </motion.div>
+        </div>
+      </section>
     </main>
   );
 }
