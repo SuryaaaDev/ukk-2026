@@ -17,7 +17,7 @@ copy .env.local.example .env.local
 Tambahkan juga Supabase env jika belum ada:
 
 ```bash
-NEXT_PUBLIC_SUPABASE_URL=https://hiyhczzetcczcyzhhzgs.supabase.co
+NEXT_PUBLIC_SUPABASE_URL=https://url.supabase.co
 NEXT_PUBLIC_SUPABASE_ANON_KEY=your_supabase_anon_key
 ```
 
